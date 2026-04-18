@@ -1,0 +1,75 @@
+trigger:
+- main
+
+pool:
+  name: 'Default'
+
+steps:
+# ============================================================================
+# STEP 1: Install Python Dependencies (requests library for Ollama API)
+# ============================================================================
+- script: pip install requests
+  displayName: 'Installing Python dependencies'
+
+# ============================================================================
+# STEP 2: LLM Vulnerability Scan
+# ============================================================================
+- script: python scan_vulnerabilities.py
+  displayName: 'Scanning source code for vulnerabilities with Ollama LLM'
+  continueOnError: true   # Don't stop pipeline if scan has issues
+
+# ============================================================================
+# STEP 3: Publish Vulnerability Report as Pipeline Artifact
+# ============================================================================
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'vulnerabilities.txt'
+    ArtifactName: 'vulnerability-report'
+  displayName: 'Publish vulnerability report for review'
+  continueOnError: true   # Publish even if file is empty or missing
+
+# ============================================================================
+# STEP 4: Display Summary in Log (for quick review without downloading)
+# ============================================================================
+- script: |
+    echo "========================================"
+    echo "VULNERABILITY SCAN COMPLETE"
+    echo "========================================"
+    if exist vulnerabilities.txt (
+      echo "Report generated: vulnerabilities.txt"
+      echo "First 20 lines of report:"
+      echo "----------------------------------------"
+      powershell -Command "Get-Content vulnerabilities.txt -Head 20"
+    ) else (
+      echo "WARNING: vulnerabilities.txt was not generated."
+    )
+    echo "========================================"
+  displayName: 'Display scan summary in log'
+
+# ============================================================================
+# STEP 5: Build the Application
+# ============================================================================
+- script: dotnet build --configuration Release
+  displayName: 'Building IPO App...'
+
+# ============================================================================
+# STEP 6: Run Unit Tests
+# ============================================================================
+- script: dotnet test --configuration Release --logger "trx;LogFileName=ipo_results.trx"
+  displayName: 'Running unit tests...'
+
+# ============================================================================
+# STEP 7: Publish Test Results to Azure DevOps GUI
+# ============================================================================
+- task: PublishTestResults@2
+  inputs:
+    testResultsFormat: 'VSTest'
+    testResultsFiles: '**/ipo_results.trx'
+    failTaskOnFailedTests: true
+  displayName: 'Publishing IPO test results...'
+
+# ============================================================================
+# STEP 8: Deployment Placeholder Message
+# ============================================================================
+- pwsh: Write-Host "TODO -- Deployment"
+  displayName: 'Log deployment placeholder'

@@ -1,0 +1,27 @@
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- task: UseDotNet@2
+  inputs:
+    packageType: 'sdk'
+    version: '10.x'
+
+- script: dotnet build --configuration Release
+  displayName: 'Building IPO App...'
+
+- script: dotnet test --configuration Release --logger "trx;LogFileName=ipo_results.trx"
+  displayName: 'Running unit tests...'
+
+- task: PublishTestResults@2
+  inputs:
+    testResultsFormat: 'VSTest'
+    testResultsFiles: '**/ipo_results.trx'
+    failTaskOnFailedTests: true
+  displayName: 'Publishing IPO test results...'
+
+- pwsh: Write-Host "TODO -- Deployment"
+  displayName: 'Log deployment placeholder'
