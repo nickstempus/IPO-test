@@ -1,0 +1,121 @@
+trigger:
+- main
+
+pool:
+  name: 'Default'
+
+stages:
+# ============================================================================
+# STAGE 1: Vulnerability Scan
+# ============================================================================
+- stage: Scan
+  displayName: 'Security Scan Stage'
+  jobs:
+  - job: ScanJob
+    displayName: 'Run LLM Vulnerability Scan'
+    steps:
+    # ------------------------------------------------------------------------
+    # Install scanner dependencies
+    # ------------------------------------------------------------------------
+    - script: python -m pip install requests
+      displayName: 'Install scanner dependencies (requests)'
+
+    # ------------------------------------------------------------------------
+    # Run the vulnerability scanner
+    # ------------------------------------------------------------------------
+    - script: python scan_vulnerabilities.py
+      displayName: 'Scan source code with Ollama LLM'
+      continueOnError: true
+
+    # ------------------------------------------------------------------------
+    # Publish the vulnerability report as an artifact
+    # ------------------------------------------------------------------------
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: 'vulnerabilities.txt'
+        ArtifactName: 'vulnerability-report'
+      displayName: 'Publish vulnerability report'
+      continueOnError: true
+
+    # ------------------------------------------------------------------------
+    # Display scan summary in log
+    # ------------------------------------------------------------------------
+    - script: |
+        echo "========================================"
+        echo "VULNERABILITY SCAN COMPLETE"
+        echo "========================================"
+        if exist vulnerabilities.txt (
+          echo "Report generated: vulnerabilities.txt"
+          echo "First 20 lines of report:"
+          echo "----------------------------------------"
+          powershell -Command "Get-Content vulnerabilities.txt -Head 20"
+        ) else (
+          echo "WARNING: vulnerabilities.txt was not generated."
+        )
+        echo "========================================"
+      displayName: 'Display scan summary'
+
+# ============================================================================
+# STAGE 2: Manual Approval (Agentless)
+# ============================================================================
+- stage: Approval
+  displayName: 'Manual Approval'
+  dependsOn: Scan
+  jobs:
+  - job: WaitForApproval
+    displayName: 'Wait for vulnerability review'
+    pool: server   # Agentless job
+    timeoutInMinutes: 60
+    steps:
+    - task: ManualValidation@1
+      inputs:
+        notifyUsers: 'nickstempus@gmail.com'
+        instructions: |
+          Vulnerability scan has completed.
+          Please review the published artifact 'vulnerability-report' (vulnerabilities.txt) in the pipeline run.
+          
+          Approve to continue with tests, or Reject to stop the pipeline.
+        onTimeout: 'reject'
+
+# ============================================================================
+# STAGE 3: Python Tests (only runs if approved)
+# ============================================================================
+- stage: Test
+  displayName: 'Run Python Tests'
+  dependsOn: Approval
+  condition: succeeded()
+  jobs:
+  - job: TestJob
+    displayName: 'Run Unit Tests'
+    steps:
+    # ------------------------------------------------------------------------
+    # Install pytest and dependencies (if any requirements.txt)
+    # ------------------------------------------------------------------------
+    - script: |
+        python -m pip install --upgrade pip
+        python -m pip install pytest pytest-azurepipelines
+        if exist requirements.txt python -m pip install -r requirements.txt
+      displayName: 'Install test dependencies'
+
+    # ------------------------------------------------------------------------
+    # Run pytest and generate JUnit XML report
+    # ------------------------------------------------------------------------
+    - script: python -m pytest --junitxml=test-results.xml
+      displayName: 'Run unit tests with pytest'
+      continueOnError: true   # Allow pipeline to continue even if no tests found
+
+    # ------------------------------------------------------------------------
+    # Publish test results to Azure DevOps GUI
+    # ------------------------------------------------------------------------
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFormat: 'JUnit'
+        testResultsFiles: '**/test-results.xml'
+        failTaskOnFailedTests: true
+      displayName: 'Publish test results'
+
+    # ------------------------------------------------------------------------
+    # Deployment placeholder message
+    # ------------------------------------------------------------------------
+    - pwsh: Write-Host "TODO -- Deployment"
+      displayName: 'Log deployment placeholder'
