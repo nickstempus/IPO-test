@@ -4,7 +4,7 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-# Hardcoded credentials 
+# Hardcoded credential
 DB_PATH = "users.db"
 ADMIN_PASSWORD = "admin123"
 
